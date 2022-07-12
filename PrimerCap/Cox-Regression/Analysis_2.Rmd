@@ -165,8 +165,7 @@ values = seq(from = as.Date("2021-06-01"), to = as.Date("2021-11-30"),
 photoperiod$dates <- values
 photoperiod$dates <- as.character(as.Date(photoperiod$dates, 
                                           format = '%Y-%m-%d'))
-ddfield$start_date <- as.character(as.Date(ddfield$start_date, 
-                                          format = '%Y-%m-%d'))
+
                                    
 new_df$start_date <- as.character(as.Date(new_df$start_date, 
                                           format = '%Y-%m-%d'))
@@ -179,13 +178,6 @@ for(d in unique(photoperiod$dates)){
     photoperiod[photoperiod$dates == d, vars2]
 }
 
-#with DATAFIELD
-ddfield[ , 'photoperiod'] <- 0 # new column called photoperiod
-vars2 <- c('photoperiod')
-for(d in unique(photoperiod$dates)){
-  ddfield[ddfield$start_date == d,vars2] <-
-    photoperiod[photoperiod$dates == d, vars2]
-}
 
 new_df$`hl/bg` <- factor(new_df$`hl/bg`, 
                          levels = c("1", "2"), 
@@ -283,8 +275,7 @@ ddfield = ddfield %>% mutate(
                  (Temp>20 & Temp<=25)~1, (Temp>25 & Temp <= 30)~ (-.2*Temp)+6),
   mwimin = FHmin*FTmin)
 
-mwiplot <-ggplot(aes(x =start_date, y= mwi), data = ddfield) + geom_line()
-mwiplot
+
 
 #mwimeanddfield
 ddfield <- ddfield %>% 
@@ -1086,120 +1077,19 @@ exp(confint(model9))
 
 ```
 
-
-
+looking for correlation
 ```{r}
-#check assumptions 
+library(corrplot)
+library(RColorBrewer)
+t = cbind(new_df_gdd$id_mosquito, new_df_gdd$`hl/bg`, new_df_gdd$location, new_df_gdd$maxtemperature,
+      new_df_gdd$mintemperature, new_df_gdd$minrh, new_df_gdd$maxrh, new_df_gdd$photoperiod,
+      new_df_gdd$mwimax, new_df_gdd$mwimin)
+colnames(t) <- c("id_mosquito", "`hl/bg`", "location", "maxtemperature", "mintemperature", "minrh",
+              "maxrh", "photoperiod", "mwimax", "mwimin")
 
-#mwimin
-rr<- coxph(formula = Surv(total_lived, censored) ~ mwimin, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ mwimin, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#mwimean
-rr<- coxph(formula = Surv(total_lived, censored) ~ mwimean, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ mwime, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#mwimax
-rr<- coxph(formula = Surv(total_lived, censored) ~ mwimax, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ mwimax, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#method
-rr<- coxph(formula = Surv(total_lived, censored) ~ method, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ method, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-#location
-rr<- coxph(formula = Surv(total_lived, censored) ~ location, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ location, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#mintemperature
-rr<- coxph(formula = Surv(total_lived, censored) ~ mintemperature, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ mintemperature, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#maxtemperature
-rr<- coxph(formula = Surv(total_lived, censored) ~ maxtemperature, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ maxtemperature, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#maxrh
-rr<- coxph(formula = Surv(total_lived, censored) ~ maxrh, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ maxrh, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#minrh
-rr<- coxph(formula = Surv(total_lived, censored) ~ minrh, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ minrh, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-#daily_acc_gdd
-rr<- coxph(formula = Surv(total_lived, censored) ~ daily_acc_gdd, data = ddfield)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-rr<- coxph(formula = Surv(total_lived, censored) ~ daily_acc_gdd, data = new_df_gdd)
-cox.zph(rr)
-ggcoxzph(cox.zph(rr))
-
-
-#in our models 3...
-Model3df<- coxph(formula = Surv(total_lived, censored) ~ photoperiod + mwimax, data = new_df_gdd)
-cox.zph(Model3df)
-ggcoxzph(cox.zph(Model3df))
-
-Model3df<- coxph(formula = Surv(total_lived, censored) ~ photoperiod + mwimax, data = ddfield)
-cox.zph(Model3df)
-ggcoxzph(cox.zph(Model3df))
+t<- as.data.frame(t)
+M <-cor(t)
+corrplot(M, type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
 
 ```
