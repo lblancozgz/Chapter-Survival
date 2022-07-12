@@ -1,0 +1,1205 @@
+---
+title: "Analysis_First_Chapter2"
+author: "Laura Blanco"
+date: "23/5/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+# 1. Uploading Libraries 
+
+```{r}
+library(tidyr)
+library(tidyverse)
+library(ggplot2)
+library(survival)
+library(survminer)
+library(ranger)
+library(ggplot2)
+library(ggpubr)
+library(ggsci)
+library(readxl)
+library(showtext)
+library(lubridate)
+setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
+data_analysis <- 
+  read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\data_analysis_cens.xlsx", 
+    col_types = c("numeric", "date","numeric", "date", 
+        "numeric", "numeric", "numeric", "numeric"))
+
+#Now, data of weather (RH and Temperature) in both locations in the field (HOBO's data)
+jardin_clima <- 
+  read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\Jardin_clima_total.xlsx", 
+    col_types = c("date", "numeric", "numeric"))
+
+palafolls_clima <- 
+  read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\Palafolls_clima_total.xlsx", 
+    col_types = c("date", "numeric", "numeric"))
+
+#URBAN DATAFRAME OF WEATHER
+temperaturemeanpal<- palafolls_clima%>% 
+  #v#calculating means of temperature and rhper day (HOBO makes 3 measures per day)
+  group_by(DATE)%>%
+  summarise(meantemperature=mean(TEMPERATURE),meanrh = mean(RH) )
+
+temperatureminpal<- palafolls_clima%>% 
+  #v#calculating mins of temperature and rhper day (HOBO makes 3 measures per day)
+  group_by(DATE)%>%
+  summarise(mintemperature=min(TEMPERATURE),minrh = min(RH) )
+
+temperaturemaxpal<- palafolls_clima%>% 
+  #v#calculating max of temperature and rhper day (HOBO makes 3 measures per day)
+  group_by(DATE)%>%
+  summarise(maxtemperature=max(TEMPERATURE),maxrh = max(RH) )
+palafolls_clima<- merge(temperaturemaxpal, temperaturemeanpal, by = "DATE")
+palafolls_clima_total<- merge(palafolls_clima, temperatureminpal, by = "DATE")
+remove(palafolls_clima)
+remove(temperaturemaxpal)
+remove(temperatureminpal)
+remove(temperaturemeanpal)
+
+#SEMI-URBAN DATAFRAME OF WEATHER
+temperaturemeanjar<- jardin_clima%>% #calculating means of temperature and rh per day
+  group_by(DATE)%>%
+  summarise(meantemperature=mean(TEMPERATURE),meanrh = mean(RH))
+
+temperatureminjar<- jardin_clima%>% #calculating min of temperature and rh per day
+  group_by(DATE)%>%
+  summarise(mintemperature=min(TEMPERATURE),minrh = min(RH))
+
+temperaturemaxjar<- jardin_clima%>% #calculating max of temperature and rh per day
+  group_by(DATE)%>%
+  summarise(maxtemperature=max(TEMPERATURE),maxrh = max(RH))
+jardin_clima<- merge(temperaturemaxjar, temperaturemeanjar, by = "DATE")
+jardin_clima_total<- merge(jardin_clima, temperatureminjar, by = "DATE")
+remove(jardin_clima)
+remove(temperaturemaxjar)
+remove(temperaturemeanjar)
+remove(temperatureminjar)
+
+jardin_clima_total$location <- "1" 
+#creating new columns according to the locations
+jardin_clima_total$location<- as.numeric(jardin_clima_total$location)
+palafolls_clima_total$location<- "2"
+palafolls_clima_total$location<- as.numeric(palafolls_clima_total$location)
+#renaming column DATE to match with start_date column from our data_analysis dataframe
+jardin_clima_total <- jardin_clima_total %>% 
+  rename(start_date = DATE)
+palafolls_clima_total <- palafolls_clima_total %>% 
+  rename(start_date = DATE)
+
+datos_semi <- inner_join(data_analysis, jardin_clima_total, 
+                         by = c("start_date", "location"), all= TRUE) 
+#Combining temperature of each location with the data
+datos_urban <- inner_join(data_analysis, palafolls_clima_total, 
+                          by = c("start_date", "location"), all= TRUE)
+datos_lab<- subset(data_analysis, location=="3")
+datos_lab$meantemperature <- NA
+datos_lab$meanrh <- NA
+datos_lab$mintemperature <- NA
+datos_lab$minrh <- NA
+datos_lab$maxtemperature <- NA
+datos_lab$maxrh <- NA
+datos_field_lab <- rbind(datos_semi,datos_urban, datos_lab) 
+#merging all to have a dataframe completed (data survival + weather)
+datos_field<- rbind(datos_semi, datos_urban)
+clima_field <- rbind(jardin_clima_total, palafolls_clima_total)
+``` 
+# 2. Creating weather variables and duplicating rows per mosquito
+
+```{r}
+df <- read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\datos_field.xlsx", 
+                 col_types = c("numeric", 
+                                   "date", "date", "numeric", "numeric", 
+                                   "numeric", "numeric", "numeric", "numeric", 
+                                  "numeric", "numeric", "numeric", "numeric"))
+clima <- read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\clima_field.xlsx", 
+                    col_types = c("date", 
+                                     "numeric", "numeric", "numeric", "numeric", 
+                                      "numeric", "numeric", "numeric"))
+
+new_df <- df[0, ] 
+# this also works, mantaining object structure (data.frame) and column names
+
+id <- seq_len(nrow(df)) # since there are duplicated ID, we iterate by row
+
+df$start_date <- as.Date(df$start_date, format = '%Y-%m-%d')
+
+df$start_date <- as.Date(df$start_date, format = '%Y-%m-%d')
+clima$start_date <- as.character(as.Date(clima$start_date, format = '%Y-%m-%d'))
+
+new_df <- do.call('rbind', lapply(seq_len(nrow(df)), function(id){
+  tmp <- do.call('rbind', replicate(df$total_lived[id],
+                                    df[id, ], simplify = FALSE))
+  tmp$start_date <- format(seq(tmp$start_date[1], by = 'day',
+                               length.out = nrow(tmp)), '%Y-%m-%d')
+  tmp
+}))
+
+vars <- c('maxtemperature', 'meantemperature', 
+          'mintemperature', 'maxrh', 'minrh', 'meanrh')
+for(d in unique(clima$start_date)){
+  new_df[new_df$start_date == d & new_df$location == 1, vars] <-
+    clima[clima$start_date == d & clima$location == 1, vars]
+  new_df[new_df$start_date == d & new_df$location == 2, vars] <-
+    clima[clima$start_date == d & clima$location == 2, vars]
+}
+```
+
+### Adding photoperiod
+
+```{r}
+#we add photoperiod
+library(meteor)
+photoperiod <- photoperiod(152:334,  41.6833)
+photoperiod <- as.data.frame(photoperiod)
+values = seq(from = as.Date("2021-06-01"), to = as.Date("2021-11-30"), 
+             by = 'day')
+photoperiod$dates <- values
+photoperiod$dates <- as.character(as.Date(photoperiod$dates, 
+                                          format = '%Y-%m-%d'))
+ddfield$start_date <- as.character(as.Date(ddfield$start_date, 
+                                          format = '%Y-%m-%d'))
+                                   
+new_df$start_date <- as.character(as.Date(new_df$start_date, 
+                                          format = '%Y-%m-%d'))
+
+str(photoperiod)
+new_df[ , 'photoperiod'] <- 0 # new column called photoperiod
+vars2 <- c('photoperiod')
+for(d in unique(photoperiod$dates)){
+  new_df[new_df$start_date == d,vars2] <-
+    photoperiod[photoperiod$dates == d, vars2]
+}
+
+#with DATAFIELD
+ddfield[ , 'photoperiod'] <- 0 # new column called photoperiod
+vars2 <- c('photoperiod')
+for(d in unique(photoperiod$dates)){
+  ddfield[ddfield$start_date == d,vars2] <-
+    photoperiod[photoperiod$dates == d, vars2]
+}
+
+new_df$`hl/bg` <- factor(new_df$`hl/bg`, 
+                         levels = c("1", "2"), 
+                         labels = c("HB", "BG"))
+new_df$location <- factor(new_df$location, 
+                          levels = c("1", "2"), 
+                          labels = c("Peri_Urban", "Urban"))
+
+```
+## Other weather parameters: GDD and MWI
+
+### Growing degree days
+
+```{r}
+library(scales)
+library(pollen)
+new_df_gdd <- new_df %>% 
+  mutate(gdd = gdd(tmax = maxtemperature, tmin = mintemperature, tbase = 10,
+                   tbase_max = 30)) %>% 
+  mutate(daily_acc_gdd = c(NA, diff(gdd)))
+
+ddfield <- datos_field %>% 
+  mutate(gdd = gdd(tmax = maxtemperature, tmin = mintemperature, tbase = 10, 
+                   tbase_max = 30)) %>% 
+  mutate(daily_acc_gdd = c(NA, diff(gdd)))
+
+ddfield <- ddfield  %>% 
+  rename(method = 'hl/bg')
+
+gdd <-ggplot(aes(x =start_date, y= daily_acc_gdd), data = ddfield) + geom_line()
+gdd
+
+```
+
+### MWImean
+
+```{r}
+mwi = function(Hum, Temp) {
+ FH = case_when(Hum < 40~0, Hum >95~0, (Hum >=40 & Hum <= 95)~
+                  ((Hum/55)-(40/55)) )
+  FT = case_when(Temp<=15~0, Temp>30~0, (Temp>15 & Temp <=20)~ 
+                   (.2*Temp)-3, (Temp>20 & Temp<=25)~1, (Temp>25 & Temp <= 30)~
+                   (-.2*6)+6)
+  return(FH*FT)
+}
+
+
+
+new_df_gdd = new_df_gdd %>% mutate(
+  FHme = case_when(meanrh < 40~0, meanrh >95~0, (meanrh >=40 & meanrh <= 95)~
+                   ((meanrh/55)-(40/55)) ),
+  FTme = case_when(meantemperature<=15~0, meantemperature>30~0, (meantemperature>15 & meantemperature <=20)~ (.2*meantemperature)-3, 
+                 (meantemperature>20 & meantemperature<=25)~1, (meantemperature>25 & meantemperature <= 30)~ (-.2*meantemperature)+6),
+  mwime = FHme*FTme)
+
+
+##MIN MWI
+new_df_gdd = new_df_gdd %>% mutate(
+  FHmin = case_when(minrh < 40~0, minrh >95~0, (minrh >=40 & minrh <= 95)~
+                   ((minrh/55)-(40/55)) ),
+  FTmin = case_when(mintemperature<=15~0, mintemperature>30~0, 
+                    (mintemperature>15 & mintemperature <=20)~ (.2*mintemperature)-3, 
+                 (mintemperature>20 & mintemperature<=25)~1, 
+                 (mintemperature>25 & mintemperature <= 30)~ (-.2*mintemperature)+6),
+  mwimin = FHmin*FTmin)
+
+##MAX MWI
+new_df_gdd = new_df_gdd %>% mutate(
+  FHmax = case_when(maxrh < 40~0, maxrh >95~0, (maxrh >=40 & maxrh <= 95)~
+                   ((maxrh/55)-(40/55)) ),
+  FTmax = case_when(maxtemperature<=15~0, maxtemperature>30~0, (maxtemperature>15 & maxtemperature <=20)~ (.2*maxtemperature)-3, 
+                 (maxtemperature>20 & maxtemperature<=25)~1, (maxtemperature>25 & maxtemperature <= 30)~ (-.2*maxtemperature)+6),
+  mwimax = FHmax*FTmax)
+
+
+#max ddfield
+ddfield <- ddfield %>% 
+  mutate(Hum = maxrh, Temp = maxtemperature)
+
+ddfield = ddfield %>% mutate(
+  FHmax = case_when(Hum < 40~0, Hum >95~0, (Hum >=40 & Hum <= 95)~
+                   ((Hum/55)-(40/55)) ),
+  FTmax = case_when(Temp<=15~0, Temp>30~0, (Temp>15 & Temp <=20)~ (.2*Temp)-3, 
+                 (Temp>20 & Temp<=25)~1, (Temp>25 & Temp <= 30)~ (-.2*Temp)+6),
+  mwimax = FHmax*FTmax)
+
+#mwiminddfield
+ddfield <- ddfield %>% 
+  mutate(Hum = minrh, Temp = mintemperature)
+
+ddfield = ddfield %>% mutate(
+  FHmin = case_when(Hum < 40~0, Hum >95~0, (Hum >=40 & Hum <= 95)~
+                   ((Hum/55)-(40/55)) ),
+  FTmin = case_when(Temp<=15~0, Temp>30~0, (Temp>15 & Temp <=20)~ (.2*Temp)-3, 
+                 (Temp>20 & Temp<=25)~1, (Temp>25 & Temp <= 30)~ (-.2*Temp)+6),
+  mwimin = FHmin*FTmin)
+
+mwiplot <-ggplot(aes(x =start_date, y= mwi), data = ddfield) + geom_line()
+mwiplot
+
+#mwimeanddfield
+ddfield <- ddfield %>% 
+  mutate(Hum = meanrh, Temp = meantemperature)
+
+ddfield = ddfield %>% mutate(
+  FHmean= case_when(Hum < 40~0, Hum >95~0, (Hum >=40 & Hum <= 95)~
+                   ((Hum/55)-(40/55)) ),
+  FTmean = case_when(Temp<=15~0, Temp>30~0, (Temp>15 & Temp <=20)~ (.2*Temp)-3, 
+                 (Temp>20 & Temp<=25)~1, (Temp>25 & Temp <= 30)~ (-.2*Temp)+6),
+  mwimean = FHmean*FTmean)
+
+mwiplotmax <-ggplot(aes(x =start_date, y= mwimax), data = ddfield) + geom_line()
+mwiplotmean <-ggplot(aes(x =start_date, y= mwimean), data = ddfield) + geom_line()
+mwiplotmin <-ggplot(aes(x =start_date, y= mwimin), data = ddfield) + geom_line()
+mwiplotmax
+mwiplotmean
+mwiplotmin
+```
+
+# 3.Cox-Regression models
+
+1. No random effects
+2. Random effects; level 1 (method) + level 2 (location);
+    - Separated: (1|method) + (1|location)
+    - Together: (1|location/method), to check the effect of the method of capture within location
+    
+## Temperature
+
+###  Models with minimum temperatures
+
+```{r}
+new_df_gdd <- new_df_gdd  %>% 
+  rename(method = 'hl/bg')
+#writexl::write_xlsx(new_df_gdd, "C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\datasurv.xlsx")
+library(coxme)
+
+```
+
+```{r}
+# No random effect
+cox_mint<- coxph(Surv(total_lived, censored) ~ mintemperature, data= new_df_gdd)
+
+summary(cox_mint)
+cox.zph(cox_mint)
+```
+
+```{r}
+#Random effect - separated
+coxme_mint_s<- coxme(Surv(total_lived, censored) ~ mintemperature + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_mint_s)
+```
+
+```{r}
+#Random effect - together
+coxme_mint_t<- coxme(Surv(total_lived, censored) ~ mintemperature + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_mint_t)
+```
+
+### Models with mean temperatures
+
+```{r}
+# No random effect
+cox_meant<- coxph(Surv(total_lived, censored) ~ meantemperature, 
+                  data= new_df_gdd)
+
+summary(cox_meant)
+```
+
+```{r}
+#Random effect - separated
+coxme_meant_s<- coxme(Surv(total_lived, censored) ~ meantemperature + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_meant_s)
+```
+
+```{r}
+#Random effect - together
+coxme_meant_t<- coxme(Surv(total_lived, censored) ~ meantemperature + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_meant_t)
+```
+
+### Models with maximum temperatures
+
+```{r}
+# No random effect
+cox_maxt<- coxph(Surv(total_lived, censored) ~ maxtemperature, 
+                  data= new_df_gdd)
+
+summary(cox_maxt)
+```
+
+```{r}
+#Random effect - separated
+coxme_maxt_s<- coxme(Surv(total_lived, censored) ~ maxtemperature + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_maxt_s)
+```
+
+```{r}
+#Random effect - together
+coxme_maxt_t<- coxme(Surv(total_lived, censored) ~ maxtemperature + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_maxt_t)
+```
+
+### MWI (Mosquito Weather Index)
+
+```{r}
+# No random effect
+cox_mwimin<- coxph(Surv(total_lived, censored) ~ mwimin, 
+                  data= new_df_gdd)
+
+summary(cox_mwimin)
+```
+
+```{r}
+#Random effect - separated
+coxme_mwimin_s<- coxme(Surv(total_lived, censored) ~ mwimin + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_mwimin_s)
+```
+
+```{r}
+#Random effect - together
+coxme_mwimin_t<- coxme(Surv(total_lived, censored) ~ mwimin + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_mwimin_t)
+```
+### MWIMEAN
+```{r}
+#no random effect
+cox_mwimean<- coxph(Surv(total_lived, censored) ~ mwime, 
+                  data= new_df_gdd)
+
+summary(cox_mwimean)
+```
+
+```{r}
+# Random effect separated
+coxme_mwimean_s<- coxme(Surv(total_lived, censored) ~ mwime + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_mwimean_s)
+```
+```{r}
+coxme_mwimean_t<- coxme(Surv(total_lived, censored) ~ mwime + 
+                   (1|location/method), data= new_df_gdd)
+summary(coxme_mwimean_t)
+```
+
+### MWIMAX
+```{r}
+#no random effect
+cox_mwimax<- coxph(Surv(total_lived, censored) ~ mwimax, 
+                  data= new_df_gdd)
+
+summary(cox_mwimax)
+```
+
+```{r}
+# Random effect separated
+coxme_mwimax_s<- coxme(Surv(total_lived, censored) ~ mwimax + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_mwimax_s)
+```
+
+```{r}
+coxme_mwimax_t<- coxme(Surv(total_lived, censored) ~ mwimax + 
+                   (1|location/method), data= new_df_gdd)
+summary(coxme_mwimax_t)
+```
+
+### GDD (Growing Degree Days)
+
+```{r}
+# No random effect
+cox_gdd<- coxph(Surv(total_lived, censored) ~ daily_acc_gdd, 
+                  data= new_df_gdd)
+
+summary(cox_gdd)
+```
+
+```{r}
+#Random effect - separated
+coxme_gdd_s<- coxme(Surv(total_lived, censored) ~ daily_acc_gdd + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_gdd_s)
+```
+
+```{r}
+#Random effect - together
+coxme_gdd_t<- coxme(Surv(total_lived, censored) ~ daily_acc_gdd + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_gdd_t)
+```
+
+### Checking all temperatures together
+
+```{r}
+# No random effect
+cox_temps<- coxph(Surv(total_lived, censored) ~ mintemperature + meantemperature
+                  + maxtemperature + mwime + mwimin+ mwimax + daily_acc_gdd, 
+                  data= new_df_gdd)
+
+summary(cox_temps)
+```
+
+```{r}
+#Random effect - separated
+coxme_temps_s<- coxme(Surv(total_lived, censored) ~ mintemperature + meantemperature
+                  + maxtemperature + mwime + mwimin + mwimax + daily_acc_gdd + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_temps_s)
+```
+
+```{r}
+#Random effect - together
+coxme_temps_t<- coxme(Surv(total_lived, censored) ~ mintemperature +
+                        meantemperature
+                  + maxtemperature + mwime + mwimin + mwimax + daily_acc_gdd +
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_temps_t)
+```
+
+### Checking collinearity in the 3 cases
+
+```{r}
+#No random effects
+rms::vif(cox_temps)
+#daily_acc_gdd has a lot of collinearity so we should remove it and do it again
+cox_temps2 <- coxph(Surv(total_lived, censored) ~ mintemperature + meantemperature
+                  + maxtemperature + mwimin + mwime + mwimax, 
+                  data= new_df_gdd)
+
+summary(cox_temps2)
+rms::vif(cox_temps2)
+#mean temperature is the next variable with higher VIF, we remove it and repeat
+cox_temps3 <- coxph(Surv(total_lived, censored) ~ mintemperature 
+                  + maxtemperature + mwimin + mwime + mwimax, 
+                  data= new_df_gdd)
+summary(cox_temps3)
+rms::vif(cox_temps3)
+stats::step(cox_temps3)
+```
+```{r}
+#Random effects - Separated
+rms::vif(coxme_temps_s)
+#daily_acc_gdd has a lot of collinearity so we should remove it and do it again
+coxme_temps_s2<- coxme(Surv(total_lived, censored) ~ mintemperature + meantemperature
+                  + maxtemperature + mwimin + mwime + mwimax + 
+                   (1|location) + (1|method), data= new_df_gdd)
+
+summary(coxme_temps_s2)
+rms::vif(coxme_temps_s2)
+#mean temperature is the next variable with higher VIF, we remove it and repeat
+coxme_temps_s3<- coxme(Surv(total_lived, censored) ~ mintemperature 
+                  + maxtemperature + mwimin + mwime + mwimax + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_temps_s3)
+rms::vif(coxme_temps_s3)
+```
+```{r}
+#Random effects - Together
+rms::vif(coxme_temps_t)
+#daily_acc_gdd has a lot of collinearity so we should remove it and do it again
+coxme_temps_t2<- coxme(Surv(total_lived, censored) ~ mintemperature +
+                        meantemperature
+                  + maxtemperature + mwimin + mwime + mwimax  +
+                   (1|location/method), data= new_df_gdd)
+
+
+summary(coxme_temps_t2)
+rms::vif(coxme_temps_t2)
+#mean temperature is the next variable with higher VIF, we remove it and repeat
+coxme_temps_t3<- coxme(Surv(total_lived, censored) ~ mintemperature
+                  + maxtemperature + mwimin + mwime + mwimax  +
+                   (1|location/method), data= new_df_gdd)
+
+
+summary(coxme_temps_t3)
+rms::vif(coxme_temps_t3)
+```
+## Relative Humidity
+
+### Minimum relative humidity
+
+```{r}
+# No random effect
+cox_minrh<- coxph(Surv(total_lived, censored) ~ minrh, 
+                  data= new_df_gdd)
+
+summary(cox_minrh)
+```
+
+```{r}
+#Random effect - separated
+coxme_minrh_s<- coxme(Surv(total_lived, censored) ~ minrh + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_minrh_s)
+```
+
+```{r}
+#Random effect - together
+coxme_minrh_t<- coxme(Surv(total_lived, censored) ~ minrh + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_minrh_t)
+```
+
+### Mean relative humidity
+
+```{r}
+# No random effect
+cox_meanrh<- coxph(Surv(total_lived, censored) ~ meanrh, 
+                  data= new_df_gdd)
+
+summary(cox_meanrh)
+```
+
+```{r}
+#Random effect - separated
+coxme_meanrh_s<- coxme(Surv(total_lived, censored) ~ meanrh + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_meanrh_s)
+```
+
+```{r}
+#Random effect - together
+coxme_meanrh_t<- coxme(Surv(total_lived, censored) ~ meanrh + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_meanrh_t)
+```
+
+### Maximum relative humidity
+
+```{r}
+# No random effect
+cox_maxrh<- coxph(Surv(total_lived, censored) ~ maxrh, 
+                  data= new_df_gdd)
+
+summary(cox_maxrh)
+```
+
+```{r}
+#Random effect - separated
+coxme_maxrh_s<- coxme(Surv(total_lived, censored) ~ maxrh + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_maxrh_s)
+```
+
+```{r}
+#Random effect - together
+coxme_maxrh_t<- coxme(Surv(total_lived, censored) ~ maxrh + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_maxrh_t)
+```
+
+### All RH together + Check collinearity
+
+```{r}
+#No random effects
+cox_rhs <- coxph(Surv(total_lived, censored) ~ minrh + meanrh
+                  + maxrh + mwimin + mwime + mwimax, 
+                  data= new_df_gdd)
+rms::vif(cox_rhs)
+#meanrh has a lot of collinearity so we should remove it and do it again
+cox_rhs2 <- coxph(Surv(total_lived, censored) ~ minrh + maxrh
+                  + mwimin + mwime + mwimax, 
+                  data= new_df_gdd)
+
+summary(cox_rhs2)
+rms::vif(cox_rhs2)
+
+#Shall we eliminate a variable here?
+stats::step(cox_rhs2)
+cox_rhs3 <- coxph(Surv(total_lived, censored) ~ minrh
+                  + mwimin + maxrh + mwimax, 
+                  data= new_df_gdd)
+
+summary(cox_rhs3)
+
+```
+
+```{r}
+#Random effects - Separated
+coxme_rh_s<- coxme(Surv(total_lived, censored) ~ minrh + meanrh
+                  + maxrh + mwimin + mwime + mwimax  + 
+                   (1|location) + (1|method), data= new_df_gdd)
+
+summary(coxme_rh_s)
+rms::vif(coxme_rh_s)
+#meanrh has a lot of collinearity so we should remove it and do it again
+coxme_rh_s2<- coxme(Surv(total_lived, censored) ~ minrh + maxrh + mwimin + mwime + mwimax  + 
+                   (1|location) + (1|method), data= new_df_gdd)
+
+summary(coxme_rh_s2)
+rms::vif(coxme_rh_s2)
+coxme_rh_s3<- coxme(Surv(total_lived, censored) ~ minrh + maxrh + mwimin + mwimax  + 
+                   (1|location) + (1|method), data= new_df_gdd)
+coxme_rh_s3
+
+```
+
+```{r}
+#Random effects - Together
+coxme_rh_t<- coxme(Surv(total_lived, censored) ~ minrh + meanrh
+                  + maxrh + mwimin + mwime + mwimax  + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_rh_t)
+rms::vif(coxme_rh_t)
+#meanrh has a lot of collinearity so we should remove it and do it again
+coxme_rh_t2<- coxme(Surv(total_lived, censored) ~ minrh + maxrh + mwimin + mwime + mwimax  + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_rh_t2)
+rms::vif(coxme_rh_t2)
+
+coxme_rh_t3<- coxme(Surv(total_lived, censored) ~ minrh + maxrh + mwimin  + mwimax  + 
+                   (1|location/method), data= new_df_gdd)
+coxme_rh_t3
+
+```
+
+## Photoperiod
+
+```{r}
+# No random effect
+cox_pho<- coxph(Surv(total_lived, censored) ~ photoperiod, 
+                  data= new_df_gdd)
+
+summary(cox_pho)
+```
+
+```{r}
+#Random effect - separated
+coxme_pho_s<- coxme(Surv(total_lived, censored) ~ photoperiod + 
+                   (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_pho_s)
+```
+
+```{r}
+#Random effect - together
+coxme_pho_t<- coxme(Surv(total_lived, censored) ~ photoperiod + 
+                   (1|location/method), data= new_df_gdd)
+
+summary(coxme_pho_t)
+```
+
+## Complete models, adding all variables
+
+```{r}
+#No random effect
+
+coxph_allv<- coxph(Surv(total_lived, censored) ~ photoperiod + minrh + meanrh +
+                  maxrh + mintemperature + meantemperature + maxtemperature + 
+                  mwimin + mwimax + daily_acc_gdd +location + method, data= new_df_gdd)
+
+summary(coxph_allv)
+rms::vif(coxph_allv) #gdd and meant with high vif
+
+cox_allv2<- coxph(Surv(total_lived, censored) ~ photoperiod + minrh + meanrh +
+                  maxrh + mintemperature  + maxtemperature + 
+                  mwimin + mwimax + meantemperature+ location + method, data= new_df_gdd)
+
+summary(cox_allv2)
+rms::vif(cox_allv2) #meant with high vif
+
+cox_allv3<- coxph(Surv(total_lived, censored) ~ photoperiod + minrh  + meanrh +
+                  maxrh + mintemperature  + maxtemperature + 
+                  mwimin + mwimax +location + method, data= new_df_gdd)
+summary(cox_allv3)
+rms::vif(cox_allv3) #meanrh with high vif
+
+cox_allv4<- coxph(Surv(total_lived, censored) ~ photoperiod + minrh  +
+                  maxrh   + mintemperature + 
+                  mwimin + mwimax +  maxtemperature + location + method, data= new_df_gdd)
+summary(cox_allv4)
+rms::vif(cox_allv4)
+stats::step(cox_allv4) #with function step, maxtemperature is removed
+cox_allv5<- coxph(Surv(total_lived, censored) ~ photoperiod +  mintemperature +
+                    maxrh + mwimin+ mwimax + location + method, data= new_df_gdd)
+summary(cox_allv5) #now we know that the parameters with collinearity have been 
+#removed. Let's find the best model!
+coxph_2<- coxph(Surv(total_lived, censored) ~ photoperiod + mwimin  +
+                     mwimax  + location + method, 
+                     data= new_df_gdd)
+summary(coxph_2)
+
+coxph_3<- coxph(Surv(total_lived, censored) ~ photoperiod +  mwimin +
+                    + location + method, 
+                     data= new_df_gdd)
+summary(coxph_3)
+
+coxph_4<- coxph(Surv(total_lived, censored) ~ photoperiod + mwimax +
+                    + location + method, 
+                     data= new_df_gdd)
+summary(coxph_4)
+
+
+coxph_5<- coxph(Surv(total_lived, censored) ~ photoperiod + mintemperature 
+                  + minrh +  location + method, 
+                     data= new_df_gdd)
+summary(coxph_5)
+
+coxph_6<- coxph(Surv(total_lived, censored) ~ photoperiod + mintemperature 
+                  + maxrh +  location + method, 
+                     data= new_df_gdd)
+summary(coxph_6)
+
+
+coxph_7<- coxph(Surv(total_lived, censored) ~ photoperiod + mintemperature 
+                  + maxrh + minrh +  location + method, 
+                     data= new_df_gdd)
+summary(coxph_7)
+
+
+coxph_8<- coxph(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd +
+                 minrh + location + method, 
+                     data= new_df_gdd)
+summary(coxph_8)
+
+coxph_9<- coxph(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd +
+                 maxrh + location + method, 
+                     data= new_df_gdd)
+summary(coxph_9)
+
+coxph_10<- coxph(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd +
+                 maxrh + minrh+ location + method, 
+                     data= new_df_gdd)
+summary(coxph_10)
+
+
+```
+
+```{r}
+#Random effect - separated
+coxme_allv<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh + meanrh +
+                      maxrh + mintemperature + meantemperature + maxtemperature +
+                      mwimin + mwimax + daily_acc_gdd + (1|location) + (1|method),
+                      data= new_df_gdd)
+summary(coxme_allv)
+rms::vif(coxme_allv) #gdd with high vif
+coxme_allv2<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh + meanrh +
+                      maxrh + mintemperature  + maxtemperature +
+                      mwimin + mwimax + meantemperature+ (1|location) + (1|method), 
+                      data= new_df_gdd)
+summary(coxme_allv2)
+rms::vif(coxme_allv2) #meantemperature with high vif
+
+coxme_allv3<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh  + meanrh + 
+                      maxrh + mintemperature  + maxtemperature +
+                      mwimin + mwimax + (1|location) + (1|method), data= new_df_gdd)
+summary(coxme_allv3)
+rms::vif(coxme_allv3) #meanrh with high vif
+
+coxme_allv4<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh  +
+                      maxrh +  mwimin + mwimax + mintemperature + maxtemperature +
+                      (1|location) + (1|method), 
+                    data= new_df_gdd, 
+                    refine.n = 500)
+rms::vif(coxme_allv4) #removing maxtemperature
+
+coxme_allv5<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh  +
+                      maxrh + mintemperature +mwimin +mwimax+  (1|location) + (1|method), 
+                    data= new_df_gdd, 
+                    refine.n = 500)
+rms::vif(coxme_allv5) #we know now the variables that doesn't have collinearity
+coxme_allv5_gdd <- coxme(Surv(total_lived, censored) ~ photoperiod + minrh  +
+                      maxrh + daily_acc_gdd +mwimin +mwimax+  (1|location) + (1|method), 
+                    data= new_df_gdd, 
+                    refine.n = 500)
+rms::vif(coxme_allv5_gdd) #if we change temperature and put gdd, we still not 
+#have collinearity
+
+```
+
+```{r}
+##Random effect - together
+coxme_allv_t<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh + meanrh +
+                     maxrh + mintemperature + meantemperature + maxtemperature + 
+                     mwimin + mwimax + (1|location/method), data= new_df_gdd)
+
+summary(coxme_allv_t)
+rms::vif(coxme_allv_t) #meantemperature with high vif
+
+coxme_allv_t2<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh + meanrh +
+                     maxrh + mintemperature + maxtemperature + 
+                    mwimin + mwimax + (1|location/method), data= new_df_gdd)
+
+summary(coxme_allv_t2)
+rms::vif(coxme_allv_t2) #meanrh with highest vif
+
+coxme_allv_t3<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh  +
+                     maxrh + mintemperature + maxtemperature + 
+                     mwimin + mwimax + (1|location/method), data= new_df_gdd)
+
+summary(coxme_allv_t3)
+rms::vif(coxme_allv_t3) #maxtemperature with highest vif
+
+coxme_allv_t4<- coxme(Surv(total_lived, censored) ~ photoperiod + minrh  +
+                     maxrh + mintemperature  + 
+                     mwimin + mwimax + (1|location/method), data= new_df_gdd)
+rms::vif(coxme_allv_t4) #maxtemperature with highest vif
+
+
+```
+
+
+```{r}
+library(finalfit)
+explanatory = c("photoperiod", "mintemperature","minrh", "maxrh", "mwimin", "mwimax", "daily_acc_gdd", "location", "method")
+dependent = "Surv(total_lived, censored)"
+new_df_gdd %>%
+  finalfit(dependent, explanatory) -> t1
+knitr::kable(t1, align=c("l", "l", "r", "r", "r"))
+
+```
+
+
+#Finally... which one?
+
+We should check the AIC and BIC of each model, maybe taking only the option of 
+(1|location) + (1|method)
+(1|location/method)
+(1|location) + (1|method) + (1|location/method) for:
+
+1. model with MWImin + MWImax, photoperiod
+2. model with MWImin, photoperiod
+3. model with MWImax, photoperiod
+4. model with MinT, minRH, photoperiod
+5. model with MinT, maxRH, photoperiod
+6. model with MinT, minRH, maxRH, photoperiod
+7. model with GDD, minRH, photoperiod
+8. model with GDD, maxRH, photoperiod
+9. model with GDD, minRH, maxRH, photoperiod
+
+Create tables with the HR, CI95%, var and sd + tables with the AIC + BIC + loglikelihood (integrated)
+
+```{r}
+#model 1.
+model1<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
+                       mwimax + (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model1))
+model2<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
+                       (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model2))
+model3<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimax  +
+                       (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model3))
+model4<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ minrh  +
+                       (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model4))
+model5<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
+                       (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model5))
+model6<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
+                 minrh +  (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model6))
+model7<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
+                 minrh +  (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model7))
+
+model8<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
+                 maxrh +  (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model8))
+model9<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd+ minrh+
+                 maxrh +  (1|location)+ (1|method) +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model9))
+
+```
+
+```{r}
+#model 1.
+model1<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
+                       mwimax + (1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model1))
+model2<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  + (1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model2))
+model3<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimax  +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model3))
+model4<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ minrh  +
+                      (1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model4))
+model5<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
+                      (1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model5))
+model6<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
+                 minrh + (1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model6))
+model7<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
+                 minrh  +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model7))
+
+model8<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
+                 maxrh +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model8))
+model9<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd+ minrh+
+                 maxrh +(1|location/method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model9))
+
+```
+
+```{r}
+#model 1.
+model1<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
+                       mwimax + (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model1))
+model2<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
+                       (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model2))
+model3<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimax  +
+                       (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model3))
+model4<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ minrh  +
+                       (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model4))
+model5<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
+                       (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model5))
+model6<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
+                 minrh +  (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model6))
+model7<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
+                 minrh +  (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model7))
+
+model8<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
+                 maxrh +  (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model8))
+model9<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd+ minrh+
+                 maxrh +  (1|location)+ (1|method),
+                       data= new_df_gdd, 
+                    refine.n = 500)
+exp(confint(model9))
+
+```
+
+
+
+```{r}
+#check assumptions 
+
+#mwimin
+rr<- coxph(formula = Surv(total_lived, censored) ~ mwimin, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ mwimin, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#mwimean
+rr<- coxph(formula = Surv(total_lived, censored) ~ mwimean, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ mwime, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#mwimax
+rr<- coxph(formula = Surv(total_lived, censored) ~ mwimax, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ mwimax, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#method
+rr<- coxph(formula = Surv(total_lived, censored) ~ method, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ method, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+#location
+rr<- coxph(formula = Surv(total_lived, censored) ~ location, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ location, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#mintemperature
+rr<- coxph(formula = Surv(total_lived, censored) ~ mintemperature, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ mintemperature, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#maxtemperature
+rr<- coxph(formula = Surv(total_lived, censored) ~ maxtemperature, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ maxtemperature, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#maxrh
+rr<- coxph(formula = Surv(total_lived, censored) ~ maxrh, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ maxrh, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#minrh
+rr<- coxph(formula = Surv(total_lived, censored) ~ minrh, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ minrh, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+#daily_acc_gdd
+rr<- coxph(formula = Surv(total_lived, censored) ~ daily_acc_gdd, data = ddfield)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+rr<- coxph(formula = Surv(total_lived, censored) ~ daily_acc_gdd, data = new_df_gdd)
+cox.zph(rr)
+ggcoxzph(cox.zph(rr))
+
+
+#in our models 3...
+Model3df<- coxph(formula = Surv(total_lived, censored) ~ photoperiod + mwimax, data = new_df_gdd)
+cox.zph(Model3df)
+ggcoxzph(cox.zph(Model3df))
+
+Model3df<- coxph(formula = Surv(total_lived, censored) ~ photoperiod + mwimax, data = ddfield)
+cox.zph(Model3df)
+ggcoxzph(cox.zph(Model3df))
+
+```
