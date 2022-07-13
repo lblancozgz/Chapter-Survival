@@ -28,21 +28,38 @@ library(ggsci)
 library(readxl)
 library(showtext)
 library(lubridate)
-setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
-data_analysis <- 
-  read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\data_analysis_cens.xlsx", 
-    col_types = c("numeric", "date","numeric", "date", 
-        "numeric", "numeric", "numeric", "numeric"))
+
+# 
+# setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
+# data_analysis <- 
+#   read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\data_analysis_cens.xlsx", 
+#     col_types = c("numeric", "date","numeric", "date", 
+#         "numeric", "numeric", "numeric", "numeric"))
+
+#pathsFede
+ setwd("/home/fbartu/Research/Laura_Blanco/Chapter-Survival/PrimerCap/")
+ data_analysis <- 
+   read_excel("data_analysis_cens.xlsx", 
+     col_types = c("numeric", "date","numeric", "date", 
+         "numeric", "numeric", "numeric", "numeric"))
+
 
 #Now, data of weather (RH and Temperature) in both locations in the field (HOBO's data)
-jardin_clima <- 
-  read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\Jardin_clima_total.xlsx", 
+# jardin_clima <- 
+#   read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\Jardin_clima_total.xlsx", 
+#     col_types = c("date", "numeric", "numeric"))
+# 
+# palafolls_clima <- 
+#   read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\Palafolls_clima_total.xlsx", #     col_types = c("date", "numeric", "numeric"))
+
+jardin_clima <-
+  read_excel("Jardin_clima_total.xlsx",
     col_types = c("date", "numeric", "numeric"))
 
-palafolls_clima <- 
-  read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\Palafolls_clima_total.xlsx", 
-    col_types = c("date", "numeric", "numeric"))
-
+palafolls_clima <-
+  read_excel("Palafolls_clima_total.xlsx",col_types = c("date", "numeric", "numeric"))
+ 
+ 
 #URBAN DATAFRAME OF WEATHER
 temperaturemeanpal<- palafolls_clima%>% 
   #v#calculating means of temperature and rhper day (HOBO makes 3 measures per day)
@@ -115,14 +132,26 @@ clima_field <- rbind(jardin_clima_total, palafolls_clima_total)
 # 2. Creating weather variables and duplicating rows per mosquito
 
 ```{r}
-df <- read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\datos_field.xlsx", 
-                 col_types = c("numeric", 
-                                   "date", "date", "numeric", "numeric", 
-                                   "numeric", "numeric", "numeric", "numeric", 
+# df <- read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\datos_field.xlsx", 
+#                  col_types = c("numeric", 
+#                                    "date", "date", "numeric", "numeric", 
+#                                    "numeric", "numeric", "numeric", "numeric", 
+#                                   "numeric", "numeric", "numeric", "numeric"))
+# clima <- read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\clima_field.xlsx", 
+#                     col_types = c("date", 
+#                                      "numeric", "numeric", "numeric", "numeric", 
+#                                       "numeric", "numeric", "numeric"))
+
+#pathsFEDE
+setwd("/home/fbartu/Research/Laura_Blanco/Chapter-Survival/PrimerCap/")
+df <- read_excel("datos_field.xlsx",
+                 col_types = c("numeric",
+                                   "date", "date", "numeric", "numeric",
+                                   "numeric", "numeric", "numeric", "numeric",
                                   "numeric", "numeric", "numeric", "numeric"))
-clima <- read_excel("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter\\clima_field.xlsx", 
-                    col_types = c("date", 
-                                     "numeric", "numeric", "numeric", "numeric", 
+clima <- read_excel("clima_field.xlsx",
+                    col_types = c("date",
+                                     "numeric", "numeric", "numeric", "numeric",
                                       "numeric", "numeric", "numeric"))
 
 new_df <- df[0, ] 
@@ -158,9 +187,9 @@ for(d in unique(clima$start_date)){
 ```{r}
 #we add photoperiod
 library(meteor)
-photoperiod <- photoperiod(152:334,  41.6833)
+photoperiod <- photoperiod(152:337,  41.6833)
 photoperiod <- as.data.frame(photoperiod)
-values = seq(from = as.Date("2021-06-01"), to = as.Date("2021-11-30"), 
+values = seq(from = as.Date("2021-06-01"), to = as.Date("2021-12-03"), 
              by = 'day')
 photoperiod$dates <- values
 photoperiod$dates <- as.character(as.Date(photoperiod$dates, 
@@ -192,7 +221,7 @@ new_df$location <- factor(new_df$location,
 ### Growing degree days
 
 ```{r}
-library(scales)
+#library(scales) not needed because there are other packages we use that import this package
 library(pollen)
 new_df_gdd <- new_df %>% 
   mutate(gdd = gdd(tmax = maxtemperature, tmin = mintemperature, tbase = 10,
@@ -225,8 +254,8 @@ mwi = function(Hum, Temp) {
 }
 
 
-
-new_df_gdd = new_df_gdd %>% mutate(
+##MEAN MWI 
+new_df_gdd= new_df_gdd %>% mutate(
   FHme = case_when(meanrh < 40~0, meanrh >95~0, (meanrh >=40 & meanrh <= 95)~
                    ((meanrh/55)-(40/55)) ),
   FTme = case_when(meantemperature<=15~0, meantemperature>30~0, (meantemperature>15 & meantemperature <=20)~ (.2*meantemperature)-3, 
@@ -512,6 +541,7 @@ summary(coxme_temps_t)
 ### Checking collinearity in the 3 cases
 
 ```{r}
+library(rms)
 #No random effects
 rms::vif(cox_temps)
 #daily_acc_gdd has a lot of collinearity so we should remove it and do it again
@@ -785,7 +815,11 @@ coxph_4<- coxph(Surv(total_lived, censored) ~ photoperiod + mwimax +
                     + location + method, 
                      data= new_df_gdd)
 summary(coxph_4)
+AIC(coxph_4)
 
+
+library("texreg")
+extractAIC(coxph_4,include.aic=TRUE)
 
 coxph_5<- coxph(Surv(total_lived, censored) ~ photoperiod + mintemperature 
                   + minrh +  location + method, 
@@ -813,6 +847,7 @@ coxph_9<- coxph(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd +
                  maxrh + location + method, 
                      data= new_df_gdd)
 summary(coxph_9)
+coxph_9$loglik
 
 coxph_10<- coxph(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd +
                  maxrh + minrh+ location + method, 
@@ -821,6 +856,10 @@ summary(coxph_10)
 
 
 ```
+
+
+## Complete models, adding all variables, and with levels
+
 
 ```{r}
 #Random effect - separated
@@ -907,7 +946,7 @@ knitr::kable(t1, align=c("l", "l", "r", "r", "r"))
 ```
 
 
-#Finally... which one?
+#Finally... which one? :))
 
 We should check the AIC and BIC of each model, maybe taking only the option of 
 (1|location) + (1|method)
@@ -933,26 +972,31 @@ model1<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model1))
+
 model2<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
                        (1|location)+ (1|method) +(1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model2))
+
 model3<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimax  +
                        (1|location)+ (1|method) +(1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model3))
+
 model4<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ minrh  +
                        (1|location)+ (1|method) +(1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model4))
+
 model5<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
                        (1|location)+ (1|method) +(1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model5))
+
 model6<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
                  minrh +  (1|location)+ (1|method) +(1|location/method),
                        data= new_df_gdd, 
@@ -969,6 +1013,7 @@ model8<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model8))
+
 model9<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd+ minrh+
                  maxrh +  (1|location)+ (1|method) +(1|location/method),
                        data= new_df_gdd, 
@@ -984,29 +1029,35 @@ model1<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  +
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model1))
+
 model2<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimin  + (1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model2))
+
 model3<- coxme(Surv(total_lived, censored) ~ photoperiod + mwimax  +(1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model3))
+
 model4<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ minrh  +
                       (1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model4))
+
 model5<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
                       (1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model5))
+
 model6<- coxme(Surv(total_lived, censored) ~ photoperiod + mintemperature+ maxrh  +
                  minrh + (1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model6))
+
 model7<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
                  minrh  +(1|location/method),
                        data= new_df_gdd, 
@@ -1018,11 +1069,16 @@ model8<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model8))
+
 model9<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd+ minrh+
                  maxrh +(1|location/method),
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model9))
+
+coxph_4
+cox.zph(coxph_4)
+ggcoxzph(cox.zph(coxph_4))
 
 ```
 
@@ -1069,6 +1125,7 @@ model8<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd  +
                        data= new_df_gdd, 
                     refine.n = 500)
 exp(confint(model8))
+
 model9<- coxme(Surv(total_lived, censored) ~ photoperiod + daily_acc_gdd+ minrh+
                  maxrh +  (1|location)+ (1|method),
                        data= new_df_gdd, 
@@ -1077,15 +1134,18 @@ exp(confint(model9))
 
 ```
 
+
 looking for correlation
+
 ```{r}
 library(corrplot)
 library(RColorBrewer)
-t = cbind(new_df_gdd$id_mosquito, new_df_gdd$`hl/bg`, new_df_gdd$location, new_df_gdd$maxtemperature,
-      new_df_gdd$mintemperature, new_df_gdd$minrh, new_df_gdd$maxrh, new_df_gdd$photoperiod,
-      new_df_gdd$mwimax, new_df_gdd$mwimin)
-colnames(t) <- c("id_mosquito", "`hl/bg`", "location", "maxtemperature", "mintemperature", "minrh",
-              "maxrh", "photoperiod", "mwimax", "mwimin")
+newDFGDD=new_df_gdd[-1]
+
+t = cbind(newDFGDD$id_mosquito, newDFGDD$method, newDFGDD$location, newDFGDD$maxtemperature,
+      newDFGDD$mintemperature, newDFGDD$minrh, newDFGDD$maxrh, newDFGDD$photoperiod,newDFGDD$daily_acc_gdd,
+      newDFGDD$mwimax, newDFGDD$mwimin)
+colnames(t) <- c("id_mosquito", "method", "location", "maxtemperature", "mintemperature", "minrh","maxrh", "photoperiod", "gdd", "mwimax", "mwimin")
 
 t<- as.data.frame(t)
 M <-cor(t)

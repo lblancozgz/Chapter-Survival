@@ -12,17 +12,31 @@ library(showtext)
 library(lubridate)
 
 #upload and prepare data
-setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
-data_analysis <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/First_chapter/data_analysis_cens.xlsx", 
+# setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
+# data_analysis <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/First_chapter/data_analysis_cens.xlsx",
+#                             col_types = c("numeric", "date","numeric", "date",
+#                                           "numeric", "numeric", "numeric", "numeric"))
+# 
+# #Now, data of weather (RH and Temperature) in both locations in the field (HOBO's data)
+# jardin_clima <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/Jardin_clima_total.xlsx",
+#                            col_types = c("date", "numeric", "numeric"))
+# 
+# palafolls_clima <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/Palafolls_clima_total.xlsx",
+#                               col_types = c("date", "numeric", "numeric"))
+
+
+#paths_Fede
+setwd("/home/fbartu/Research/Laura_Blanco/Chapter-Survival/PrimerCap")
+data_analysis <- read_excel("data_analysis_cens.xlsx", 
                             col_types = c("numeric", "date","numeric", "date", 
                                           "numeric", "numeric", "numeric", "numeric"))
-
-#Now, data of weather (RH and Temperature) in both locations in the field (HOBO's data)
-jardin_clima <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/Jardin_clima_total.xlsx", 
+#Hobos en estanterias hoteles jardin
+jardin_clima <- read_excel("Jardin_clima_total.xlsx", 
                            col_types = c("date", "numeric", "numeric"))
-
-palafolls_clima <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/Palafolls_clima_total.xlsx", 
+#Hobos en estanterias hoteles palafolls
+palafolls_clima <- read_excel("Palafolls_clima_total.xlsx", 
                               col_types = c("date", "numeric", "numeric"))
+
 
 #URBAN DATAFRAME OF WEATHER
 temperaturemeanpal<- palafolls_clima%>% #v#calculating means of temperature and rhper day (HOBO makes 3 measures per day)
@@ -36,6 +50,7 @@ temperatureminpal<- palafolls_clima%>% #v#calculating mins of temperature and rh
 temperaturemaxpal<- palafolls_clima%>% #v#calculating max of temperature and rhper day (HOBO makes 3 measures per day)
   group_by(DATE)%>%
   summarise(maxtemperature=max(TEMPERATURE),maxrh = max(RH) )
+
 palafolls_clima<- merge(temperaturemaxpal, temperaturemeanpal, by = "DATE")
 palafolls_clima_total<- merge(palafolls_clima, temperatureminpal, by = "DATE")
 remove(palafolls_clima)
@@ -106,6 +121,7 @@ hist(datos_field_lab$total_lived)
 datos_field <- datos_field %>%
   rename(method = 'hl/bg')
 
+################################################################3
 #Fit survival with Kaplan-Meier method
 ##LOCATION (LAB AND FIELD)
 survfit(Surv(total_lived, censored) ~ location, data = datos_field_lab, type = "kaplan-meier") 
@@ -189,6 +205,7 @@ Fig3<- survfit(Surv(total_lived, censored)~ method + location, datos_field_lab, 
     palette =c("#3B4992FF", "#BB0021FF"),
     ggtheme = theme_bw(base_size=11),
   )
+Fig3
 
 #This is a plot about the survival between same methods of capture in the different locations#
 Fig4<- survfit(Surv(total_lived, censored)~ location + method, datos_field_lab, conf.type="log-log")%>%
@@ -209,6 +226,7 @@ Fig4<- survfit(Surv(total_lived, censored)~ location + method, datos_field_lab, 
     palette =c("#3B4992FF", "#BB0021FF"),
     ggtheme = theme_bw(base_size=11),
   )
+Fig4
 
 FIG5<- ggarrange(Fig3 + rremove("ylab") + rremove("xlab"), Fig4 + rremove("ylab") + rremove("xlab"), nrow = 2, labels =c("A", "B")) 
 

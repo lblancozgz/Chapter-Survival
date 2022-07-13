@@ -6,20 +6,30 @@ library(lattice)
 library(lubridate)
 library(RColorBrewer)
 library(readxl)
-library(ggpubr)
 library(rstatix)
+library(ggpubr)
 library(ggsci)
-setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
 
-datastat <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/First_chapter/data_analysis_cens.xlsx", 
+#setwd("C:\\Users\\lblan\\OneDrive\\Escritorio\\CEAB\\2022\\First_chapter")
+
+#datastat <- read_excel("C:/Users/lblan/OneDrive/Escritorio/CEAB/2022/First_chapter/data_analysis_cens.xlsx", 
+#                       col_types = c("numeric", "date","numeric", "date", 
+#                                     "numeric", "numeric", "numeric", 
+#                                     "numeric"))
+
+
+#paths_Fede
+setwd("/home/fbartu/Research/Laura_Blanco/Chapter-Survival/PrimerCap")
+datastat <- read_excel("data_analysis_cens.xlsx", 
                        col_types = c("numeric", "date","numeric", "date", 
                                      "numeric", "numeric", "numeric", 
                                      "numeric"))
+
 datset_field <- datastat[!(datastat$location=="3"),]
 datset_field_bg <- datastat[!(datastat$location=="3" | datastat$`hl/bg` == "1"),]
 datset_field_hb <- datastat[!(datastat$location=="3" | datastat$`hl/bg` == "2"),]
 
-#Creamos dataframe del jardín botánico para cada tipo de método de captura
+#Creamos dataframe del jard?n bot?nico para cada tipo de m?todo de captura
 datset_jar <- datastat[!(datastat$location=="2" | datastat$location=="3"),]
 datset_jar_hl<-datastat[!(datastat$location=="2" | datastat$location=="3"  | datastat$`hl/bg` == "2"),]
 datset_jar_bg<-datastat[!(datastat$location=="2" | datastat$location=="3" | datastat$`hl/bg` == "1"),]
@@ -27,8 +37,11 @@ ks.test(datset_jar_bg$total_lived, "pnorm", mean(datset_jar_bg$total_lived, na.r
 ks.test(datset_jar_hl$total_lived, "pnorm", mean(datset_jar_hl$total_lived, na.rm=T), sd(datset_jar_hl$total_lived,na.rm=T)) #pvalor >0.05 con HL.
 test_jar_bghl <- wilcox.test(datset_jar$total_lived~datset_jar$`hl/bg`, exact = FALSE, paired = FALSE)
 test_jar_bghl #p-value <0.05. There are significative differences between 2 methods of capture in the Botanical Garden
+#two sample ks test
+kstest_jar_bghl <- ks.test(datset_jar$total_lived,datset_jar$`hl/bg`)
+kstest_jar_bghl
 
-#Creamos dataframe de Palafolls para cada tipo de método de captura
+#Creamos dataframe de Palafolls para cada tipo de m?todo de captura
 datset_pal<-datastat[!(datastat$location=="1" | datastat$location=="3"),]
 datset_pal_hl<-datastat[!(datastat$location=="1" | datastat$location=="3"| datastat$`hl/bg` == "2"),]
 datset_pal_bg<-datastat[!(datastat$location=="1" | datastat$location=="3"| datastat$`hl/bg` == "1"),]
@@ -43,11 +56,16 @@ ks.test(datset_pal$total_lived, "pnorm", mean(datset_pal$total_lived, na.rm=T), 
 test_location <- wilcox.test(datset_field$total_lived~datset_field$location, exact = FALSE, paired = FALSE)
 test_location#p-value <0.5. There are significative differences between survival in 2 field locations.
 
+#two sample ks test
+kstest_jar_pal <- ks.test(datset_field$total_lived,datset_field$location)
+kstest_jar_pal
+
+
 #Prueba t de Student para dos muestras independientes (con distribucion normal)
 t.test(datset_pal_hl$total_lived,datset_jar_hl$total_lived) #p-value <0.05, SIGNIFICANT DIFFERENCES BETWEEN SURVIVAL BY HL METHOD IN THE FIELD LOCATIONS
 wilcox.test(datset_field_bg$total_lived~datset_field_bg$location,exact = FALSE, paired = FALSE) #pvalue<0.5. There are significative differences betwwen survival by bg method in the field locations
 
-#loop, in each location, diferences in survival depending on capture method
+#loop, in each location, differences in survival depending on capture method
 #due to difference in size of females BG and females HL
 x<- 0
 for (i in 1:999) {
